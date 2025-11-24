@@ -1,6 +1,7 @@
 services:
   mongodb:
     image: mongo:latest
+    container_name: spotifyrecs-mongodb
     ports:
       - "27017:27017"
     environment:
@@ -10,9 +11,17 @@ services:
     volumes:
       - mongodb_data:/data/db
       - ./data:/data/import
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - spotifyrecs-network
 
   neo4j:
     image: neo4j:latest
+    container_name: spotifyrecs-neo4j
     ports:
       - "7474:7474"  # HTTP
       - "7687:7687"  # Bolt
@@ -24,6 +33,13 @@ services:
       - neo4j_logs:/logs
       - neo4j_import:/var/lib/neo4j/import
       - ./neo4j_scripts:/scripts
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "password123", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - spotifyrecs-network
 
   flask-api:
     build:
