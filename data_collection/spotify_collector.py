@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 from typing import List, Dict
 import time
+import re
 
 # Load environment variables
 load_dotenv()
@@ -96,24 +97,27 @@ class SpotifyCollector:
     def get_audio_features(self, track_ids: List[str]) -> List[Dict]:
         """
         Get audio features for multiple tracks (batch operation)
-        
+
         Args:
             track_ids: List of Spotify track IDs
-        
+
         Returns:
             List of audio feature dictionaries
         """
         features_list = []
-        
+
         # Spotify API allows up to 100 tracks per request
         batch_size = 100
-        
-        for i in range(0, len(track_ids), batch_size):
+        total_batches = (len(track_ids) + batch_size - 1) // batch_size
+
+        for batch_num, i in enumerate(range(0, len(track_ids), batch_size), 1):
             batch = track_ids[i:i + batch_size]
-            
+
+            print(f"  Processing batch {batch_num}/{total_batches} ({len(batch)} tracks)...")
+
             try:
                 features = self.sp.audio_features(batch)
-                
+
                 for feature in features:
                     if feature:  # Skip None results
                         features_list.append({
@@ -131,13 +135,13 @@ class SpotifyCollector:
                             'time_signature': feature['time_signature'],
                             'valence': feature['valence']
                         })
-                
-                # Rate limiting: be nice to Spotify API
-                time.sleep(0.1)
-                
+
+                # Generous rate limiting to avoid hitting API limits
+                time.sleep(1.5)
+
             except Exception as e:
-                print(f"  Error getting audio features for batch: {e}")
-        
+                print(f"  ✗ Error getting audio features for batch {batch_num}: {e}")
+
         return features_list
     
     def collect_from_playlists(self, playlist_ids: List[str], output_file: str = 'data/raw/tracks.json'):
@@ -160,26 +164,27 @@ class SpotifyCollector:
             print(f"  [{i}/{len(playlist_ids)}] Processing playlist: {playlist_id}")
             track_ids = self.get_playlist_tracks(playlist_id)
             all_track_ids.update(track_ids)
-            time.sleep(0.5)  # Rate limiting
+            time.sleep(1.5)  # Generous rate limiting between playlists
         
         print(f"\n✓ Found {len(all_track_ids)} unique tracks\n")
         
         # Step 2: Get track details
         print("Step 2: Fetching track metadata...")
+        print(f"  This will take approximately {len(all_track_ids) * 0.1:.0f} seconds...")
         tracks_data = []
         all_track_ids = list(all_track_ids)
-        
+
         for i, track_id in enumerate(all_track_ids, 1):
-            if i % 100 == 0:
-                print(f"  Progress: {i}/{len(all_track_ids)} tracks")
-            
+            if i % 50 == 0:
+                print(f"  Progress: {i}/{len(all_track_ids)} tracks ({i*100//len(all_track_ids)}%)")
+
             track_details = self.get_track_details(track_id)
             if track_details:
                 tracks_data.append(track_details)
-            
-            # Rate limiting
-            if i % 50 == 0:
-                time.sleep(1)
+
+            # Generous rate limiting - sleep every 30 tracks
+            if i % 30 == 0:
+                time.sleep(2)
         
         print(f"\n✓ Retrieved metadata for {len(tracks_data)} tracks\n")
         
@@ -220,54 +225,98 @@ class SpotifyCollector:
         return complete_tracks
 
 
+def extract_playlist_ids(input_text: str) -> List[str]:
+    """
+    Extract playlist IDs from various input formats:
+    - Full Spotify URLs: https://open.spotify.com/playlist/PLAYLIST_ID
+    - Playlist IDs directly: PLAYLIST_ID
+    - Comma or space separated
+
+    Args:
+        input_text: String containing playlist URLs or IDs
+
+    Returns:
+        List of extracted playlist IDs
+    """
+    playlist_ids = []
+
+    # Pattern to match Spotify playlist URLs
+    url_pattern = r'spotify\.com/playlist/([a-zA-Z0-9]+)'
+
+    # Find all URLs first
+    url_matches = re.findall(url_pattern, input_text)
+    playlist_ids.extend(url_matches)
+
+    # If no URLs found, try to extract IDs directly
+    if not playlist_ids:
+        # Split by common delimiters
+        parts = re.split(r'[,\s\n]+', input_text.strip())
+        for part in parts:
+            if part and len(part) == 22 and part.isalnum():
+                playlist_ids.append(part)
+
+    return playlist_ids
+
+
 def main():
     """Main execution function"""
-    
-    # Example playlist IDs (replace with your own or use these diverse ones)
-    # You can get playlist IDs from Spotify URLs: 
-    # https://open.spotify.com/playlist/PLAYLIST_ID
-    
-    example_playlists = [
-        '37i9dQZF1DXcBWIGoYBM5M',  # Today's Top Hits
-        '37i9dQZF1DX0XUsuxWHRQd',  # RapCaviar
-        '37i9dQZF1DX4dyzvuaRJ0n',  # Mint (pop)
-        '37i9dQZF1DX4JAvHpjipBk',  # New Music Friday
-        '37i9dQZF1DX1lVhptIYRda',  # Hot Country
-        '37i9dQZF1DX4sWSpwq3LiO',  # Peaceful Piano
-        '37i9dQZF1DX3rxVfibe1L0',  # Mood Booster
-        '37i9dQZF1DX0BcQWzuB7ZO',  # Dance Rising
-        '37i9dQZF1DWXRqgorJj26U',  # Rock Classics
-        '37i9dQZF1DWWEJlAGA9gs0',  # Classical Essentials
-    ]
-    
+
     print("\nSpotify Data Collector")
     print("=" * 60)
     print("Make sure you have set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET")
     print("in your .env file!")
     print("=" * 60)
-    
+
     try:
         collector = SpotifyCollector()
-        
+
         # Option to use custom playlists
-        use_custom = input("\nUse custom playlist IDs? (y/n): ").lower()
-        
+        print("\n" + "=" * 60)
+        print("PLAYLIST INPUT OPTIONS")
+        print("=" * 60)
+        print("You can input playlists in multiple ways:")
+        print("  1. Paste full Spotify URLs (one or more)")
+        print("     Example: https://open.spotify.com/playlist/37i9dQZEVXbMDoHDwVN2tF")
+        print("  2. Enter just the playlist IDs (comma or space separated)")
+        print("     Example: 37i9dQZEVXbMDoHDwVN2tF, 3fB6UcYdnPkXJhEMV9kWtB")
+        print("  3. Mix of URLs and IDs")
+        print("\nTo find playlists on Spotify:")
+        print("  - Open Spotify web player (open.spotify.com)")
+        print("  - Search for playlists (e.g., 'Top 100', 'Rock', 'Workout')")
+        print("  - Copy the URL from your browser")
+        print("=" * 60)
+
+        use_custom = input("\nEnter your own playlists? (y/n): ").lower()
+
         if use_custom == 'y':
-            print("\nEnter playlist IDs (one per line, empty line to finish):")
-            custom_playlists = []
+            print("\nPaste your playlist URLs or IDs below.")
+            print("You can paste multiple at once (separated by commas, spaces, or new lines)")
+            print("Type 'done' on a new line when finished:\n")
+
+            all_input = []
             while True:
-                playlist_id = input("Playlist ID: ").strip()
-                if not playlist_id:
+                line = input().strip()
+                if line.lower() == 'done':
                     break
-                custom_playlists.append(playlist_id)
-            
-            if custom_playlists:
-                playlist_ids = custom_playlists
+                if line:
+                    all_input.append(line)
+
+            # Combine all input and extract IDs
+            combined_input = ' '.join(all_input)
+            playlist_ids = extract_playlist_ids(combined_input)
+
+            if playlist_ids:
+                print(f"\n✓ Found {len(playlist_ids)} playlist(s):")
+                for i, pid in enumerate(playlist_ids, 1):
+                    print(f"  {i}. {pid}")
             else:
-                print("No playlists entered, using example playlists")
-                playlist_ids = example_playlists
+                print("\n✗ No valid playlist IDs found.")
+                print("Please make sure you're using valid Spotify playlist URLs or IDs.")
+                return
         else:
-            playlist_ids = example_playlists
+            print("\n✗ No playlists provided. Exiting.")
+            print("\nTo collect data, run again and enter your playlist URLs or IDs.")
+            return
         
         # Collect data
         tracks = collector.collect_from_playlists(
