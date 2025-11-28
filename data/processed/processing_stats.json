@@ -1,0 +1,13 @@
+{
+  "total_tracks": 6513,
+  "n_clusters": 10,
+  "silhouette_score": 0.12608888239291163,
+  "total_edges": 97673,
+  "avg_edges_per_track": 14.996622140334715,
+  "umap_params": {
+    "n_neighbors": 15,
+    "min_dist": 0.1
+  },
+  "similarity_threshold": 0.7,
+  "top_n_similar": 15
+}

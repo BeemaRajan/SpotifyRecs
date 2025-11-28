@@ -22,6 +22,7 @@ EXPOSE 5000
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Run Flask application
 CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000"]

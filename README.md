@@ -225,7 +225,7 @@ Response:
 # Run all tests
 pytest
 
-# Run specific test file
+# Run specific test
 pytest tests/test_api.py
 
 # With coverage
@@ -305,6 +305,8 @@ LIMIT 20
 - **Audio Features**: 13 features per track (energy, danceability, valence, tempo, etc.)
 - **ML Features**: 2D UMAP embeddings, cluster assignments
 - **Graph Edges**: ~75,000 similarity relationships (top 10-15 per track)
+
+- Was originally going to use Spotify API, but instead downloaded Kaggle dataset: https://www.kaggle.com/datasets/julianoorlandi/spotify-top-songs-and-audio-features?resource=download
 
 ## Technologies
 

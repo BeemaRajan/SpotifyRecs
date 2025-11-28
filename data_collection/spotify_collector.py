@@ -4,13 +4,14 @@ Collects track data and audio features from Spotify API
 """
 
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+from spotipy.oauth2 import SpotifyOAuth
 import json
 import os
 from dotenv import load_dotenv
 from typing import List, Dict
 import time
 import re
+import glob
 
 # Load environment variables
 load_dotenv()
@@ -20,20 +21,24 @@ class SpotifyCollector:
     """Collects track data from Spotify API"""
     
     def __init__(self):
-        """Initialize Spotify client"""
+        """Initialize Spotify client with user authentication"""
         client_id = os.getenv('SPOTIFY_CLIENT_ID')
         client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
-        
+        redirect_uri = os.getenv('SPOTIFY_REDIRECT_URI', 'http://localhost:8888/callback')
+
         if not client_id or not client_secret:
             raise ValueError("SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set in .env file")
-        
-        # Initialize Spotify client
-        client_credentials_manager = SpotifyClientCredentials(
+
+        # Initialize Spotify client with OAuth (user authentication)
+        auth_manager = SpotifyOAuth(
             client_id=client_id,
-            client_secret=client_secret
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+            scope='user-read-private user-library-read',
+            cache_path='.spotify_cache'
         )
-        self.sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
-        print("✓ Connected to Spotify API")
+        self.sp = spotipy.Spotify(auth_manager=auth_manager)
+        print("✓ Connected to Spotify API with user authentication")
     
     def get_playlist_tracks(self, playlist_id: str) -> List[str]:
         """
@@ -225,6 +230,44 @@ class SpotifyCollector:
         return complete_tracks
 
 
+def get_next_output_filename(base_dir: str = 'data/raw', prefix: str = 'spotify_tracks') -> str:
+    """
+    Find the next available filename with incrementing number.
+
+    Args:
+        base_dir: Directory to check for existing files
+        prefix: Filename prefix (default: 'spotify_tracks')
+
+    Returns:
+        Path to the next available file (e.g., 'data/raw/spotify_tracks_0.json')
+    """
+    # Create directory if it doesn't exist
+    os.makedirs(base_dir, exist_ok=True)
+
+    # Find all existing files matching the pattern
+    pattern = os.path.join(base_dir, f'{prefix}_*.json')
+    existing_files = glob.glob(pattern)
+
+    if not existing_files:
+        # No existing files, start with 0
+        next_number = 0
+    else:
+        # Extract numbers from existing filenames
+        numbers = []
+        for filepath in existing_files:
+            filename = os.path.basename(filepath)
+            # Extract number from pattern like 'spotify_tracks_5.json'
+            match = re.search(rf'{prefix}_(\d+)\.json$', filename)
+            if match:
+                numbers.append(int(match.group(1)))
+
+        # Get the next number
+        next_number = max(numbers) + 1 if numbers else 0
+
+    output_file = os.path.join(base_dir, f'{prefix}_{next_number}.json')
+    return output_file
+
+
 def extract_playlist_ids(input_text: str) -> List[str]:
     """
     Extract playlist IDs from various input formats:
@@ -261,10 +304,45 @@ def extract_playlist_ids(input_text: str) -> List[str]:
 def main():
     """Main execution function"""
 
+    # Default playlists covering various genres
+    DEFAULT_PLAYLISTS = {
+        'Hip-Hop & Rap': [
+            '15efRmOd668AKaKJUVVdcZ',  # Rap Nation (164 tracks)
+            '0NCspsyf0OS4BsPgGhkQXM',  # Trap Nation (151 tracks, 2M+ followers)
+            '60reOQRhSzi7AnslijjP8x',  # Wave Nation (77 tracks)
+        ],
+        'Lo-Fi & Chill': [
+            '0vvXsWCC9xrXsKd4FyS8kM',  # Lofi Girl - beats to relax/study to (500 tracks, 7.1M+ followers)
+            '0CFuMybe6s77w6QQrJjW7d',  # Chillhop Radio (300 tracks, 627K+ followers)
+            '74sUjcvpGfdOvCHvgzNEDO',  # lofi hip hop beats (200 tracks, 1M+ followers)
+        ],
+        'Indie & Alternative': [
+            '4H6VS6HIC2cn42UlXj9BLi',  # Soft Indie - Indie Pop/Rock/Folk
+            '6jcrMxA2x01W43Hu7onvEC',  # Daydream: Indie & Alternative
+        ],
+        'Electronic/EDM/House': [
+            '7qhhMMuWRxnq8pbvUlNcKy',  # EDM & HOUSE TOP 100 (100 tracks, 20.9K followers)
+            '4kyg9qA547jUo52Ee5oWsJ',  # House & Techno 2025 (79 tracks, 14K followers)
+            '5Hl7t263NvJVasvEYuXgIr',  # Techno House 2025 | Party Hits (82 tracks, 30.9K followers)
+        ],
+        'Throwback/Decades': [
+            '0JNuNJ5bag4ANieh61XYMC',  # Top Hits 2020-Today
+            '1BCipY1frgsqhrrJnRDhzv',  # Top Hits 2010-2019
+            '1mdQJeKlV7HZgqoMuy6v4t',  # Top Hits 2000-2009
+            '2yCL2JuHkpjC2yVQ3B1d1g',  # Top Hits 1990-1999
+        ]
+    }
+
     print("\nSpotify Data Collector")
     print("=" * 60)
-    print("Make sure you have set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET")
-    print("in your .env file!")
+    print("SETUP REQUIREMENTS:")
+    print("1. SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in .env file")
+    print("2. SPOTIFY_REDIRECT_URI (optional, defaults to http://localhost:8888/callback)")
+    print("\nIMPORTANT: User Authentication Required")
+    print("  - A browser window will open for Spotify login")
+    print("  - Log in and authorize the app")
+    print("  - You'll be redirected to localhost (this is normal)")
+    print("  - Copy the FULL URL from your browser and paste it back here")
     print("=" * 60)
 
     try:
@@ -314,14 +392,25 @@ def main():
                 print("Please make sure you're using valid Spotify playlist URLs or IDs.")
                 return
         else:
-            print("\n✗ No playlists provided. Exiting.")
-            print("\nTo collect data, run again and enter your playlist URLs or IDs.")
-            return
-        
+            # Use default playlists
+            print("\n✓ Using default playlists covering multiple genres:")
+            playlist_ids = []
+            for genre, playlists in DEFAULT_PLAYLISTS.items():
+                print(f"\n  {genre}:")
+                for playlist_id in playlists:
+                    print(f"    - {playlist_id}")
+                playlist_ids.extend(playlists)
+
+            print(f"\n✓ Total: {len(playlist_ids)} playlists")
+
+        # Get next available filename
+        output_file = get_next_output_filename()
+        print(f"\n✓ Output will be saved to: {output_file}\n")
+
         # Collect data
         tracks = collector.collect_from_playlists(
             playlist_ids=playlist_ids,
-            output_file='data/raw/spotify_tracks.json'
+            output_file=output_file
         )
         
         print("\nData collection complete!")
