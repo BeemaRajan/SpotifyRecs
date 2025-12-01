@@ -43,7 +43,7 @@ SpotifyRecs is a hybrid recommendation system that demonstrates the power of com
 
 ## Dataset
 
-The SpotifyRecs system uses Spotify track data with comprehensive audio features extracted via the Spotify Web API. The dataset can be sourced either from the Spotify API directly or from a pre-collected Kaggle dataset, containing between 1,500 to 7,000 tracks depending on the data collection method.
+The SpotifyRecs system uses Spotify track data with comprehensive audio features extracted via the Spotify Web API. The dataset can be sourced either from the Spotify API directly or from a pre-collected Kaggle dataset.
 
 ### Audio Features
 
