@@ -45,6 +45,8 @@ def convert_csv_to_json(
 
     tracks = []
     skipped_count = 0
+    duplicate_count = 0
+    seen_combinations = set()
 
     try:
         with open(csv_file, 'r', encoding='utf-8') as f:
@@ -52,6 +54,23 @@ def convert_csv_to_json(
 
             for row_num, row in enumerate(reader, start=2):  # start=2 because row 1 is header
                 try:
+                    # --- DUPLICATE CHECK START ---
+                    # Check for duplicates based on Title and Artist (Case-insensitive)
+                    # We check this early to skip processing if it's a duplicate
+                    current_title = row['track_name'].strip()
+                    current_artist = row['artist_names'].strip()
+                    
+                    # Create a unique key for the song
+                    combo_key = (current_title.lower(), current_artist.lower())
+                    
+                    if combo_key in seen_combinations:
+                        duplicate_count += 1
+                        continue
+                    
+                    # Add to seen set
+                    seen_combinations.add(combo_key)
+                    # --- DUPLICATE CHECK END ---
+
                     # Map key names (CSV uses different names than expected)
                     # Note: 'key' in CSV is the musical key name (e.g., "G", "C#/Db")
                     # We need to convert this to a numeric value (0-11) for compatibility
@@ -99,7 +118,9 @@ def convert_csv_to_json(
                     print(f"  Warning: Skipped row {row_num} due to error: {e}")
                     continue
 
-        print(f"Successfully read {len(tracks)} tracks from CSV")
+        print(f"Successfully read {len(tracks)} unique tracks from CSV")
+        if duplicate_count > 0:
+            print(f"  (Removed {duplicate_count} duplicate songs)")
         if skipped_count > 0:
             print(f"  (Skipped {skipped_count} rows due to errors)")
         print()

@@ -31,7 +31,7 @@ Before you begin, make sure you have:
 4. Fill in the details:
    - App name: "SpotifyRecs"
    - App description: "Music recommendation system"
-   - Redirect URI: http://localhost:8888/callback (required but not used)
+   - Redirect URI: http://127.0.0.1:8888/callback (required but not used)
    - Check the Developer Terms of Service
 5. Click "Save"
 6. On your app's page, click "Settings"

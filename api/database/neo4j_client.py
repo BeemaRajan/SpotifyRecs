@@ -131,7 +131,14 @@ class Neo4jClient:
           AND r1.similarity >= $min_similarity
           AND r2.similarity >= $min_similarity
           AND r3.similarity >= $min_similarity
-        RETURN a.track_id as track_a_id,
+          AND r1.similarity < 0.99
+          AND r2.similarity < 0.99
+          AND r3.similarity < 0.99
+          AND a.title <> b.title 
+          AND b.title <> c.title 
+          AND a.title <> c.title 
+        RETURN DISTINCT
+               a.track_id as track_a_id,
                a.title as track_a_title,
                b.track_id as track_b_id,
                b.title as track_b_title,
@@ -178,31 +185,6 @@ class Neo4jClient:
             ORDER BY degree DESC, avg_similarity DESC
             LIMIT $limit
             """
-        elif algorithm == 'pagerank':
-            # PageRank using GDS library (requires GDS plugin)
-            query = """
-            CALL gds.pageRank.stream({
-                nodeProjection: 'Track',
-                relationshipProjection: {
-                    SIMILAR_TO: {
-                        type: 'SIMILAR_TO',
-                        properties: 'similarity'
-                    }
-                },
-                relationshipWeightProperty: 'similarity'
-            })
-            YIELD nodeId, score
-            WITH gds.util.asNode(nodeId) as track, score
-            RETURN track.track_id as track_id,
-                   track.title as title,
-                   track.cluster_id as cluster_id,
-                   score
-            ORDER BY score DESC
-            LIMIT $limit
-            """
-        else:
-            # Fallback to degree centrality
-            return self.get_centrality_ranking(limit, 'degree')
         
         try:
             with self._driver.session() as session:
@@ -210,10 +192,6 @@ class Neo4jClient:
                 return [dict(record) for record in result]
         except Exception as e:
             print(f"Error in get_centrality_ranking: {e}")
-            # If GDS library not available, fallback to degree centrality
-            if algorithm == 'pagerank':
-                print("PageRank failed, falling back to degree centrality")
-                return self.get_centrality_ranking(limit, 'degree')
             return []
     
     # Hybrid Query 8: Cluster navigation

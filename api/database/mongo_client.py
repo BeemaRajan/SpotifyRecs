@@ -181,12 +181,12 @@ class MongoDBClient:
         """
         mood_profiles = {
             'happy': {
-                'valence_min': 0.6,
-                'energy_min': 0.5
+                'valence_min': 0.9,
+                'energy_min': 0.7
             },
             'energetic': {
                 'energy_min': 0.7,
-                'tempo_min': 120
+                'tempo_min': 150
             },
             'calm': {
                 'energy_max': 0.4,

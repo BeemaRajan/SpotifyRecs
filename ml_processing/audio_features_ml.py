@@ -107,36 +107,78 @@ class AudioFeatureProcessor:
         
         return embeddings
     
+    def find_optimal_clusters(self, features: np.ndarray, k_range: range = range(2, 21)) -> dict:
+        """
+        Find optimal number of clusters using silhouette score
+
+        Args:
+            features: Normalized feature matrix
+            k_range: Range of k values to test (default: 2 to 20)
+
+        Returns:
+            Dictionary with optimal k and all scores
+        """
+        print(f"\nFinding optimal number of clusters...")
+        print(f"  Testing k values from {k_range.start} to {k_range.stop - 1}")
+
+        silhouette_scores = []
+        k_values = []
+
+        for k in k_range:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(features)
+            score = silhouette_score(features, labels)
+
+            silhouette_scores.append(score)
+            k_values.append(k)
+
+            print(f"    k={k:2d}: silhouette={score:.4f}")
+
+        # Find optimal k
+        optimal_idx = np.argmax(silhouette_scores)
+        optimal_k = k_values[optimal_idx]
+        optimal_score = silhouette_scores[optimal_idx]
+
+        print(f"\n✓ Optimal number of clusters: {optimal_k}")
+        print(f"  Best silhouette score: {optimal_score:.4f}")
+
+        return {
+            'optimal_k': optimal_k,
+            'optimal_score': optimal_score,
+            'all_k_values': k_values,
+            'all_scores': silhouette_scores
+        }
+
     def perform_clustering(self, features: np.ndarray) -> tuple:
         """
         Perform K-means clustering
-        
+
         Returns:
             Tuple of (cluster_labels, silhouette_score, kmeans_model)
         """
         print(f"\nPerforming K-means clustering...")
         print(f"  Number of clusters: {self.n_clusters}")
-        
+
         kmeans = KMeans(
             n_clusters=self.n_clusters,
             random_state=42,
             n_init=10
         )
-        
+
         cluster_labels = kmeans.fit_predict(features)
-        
+
         # Calculate silhouette score
         sil_score = silhouette_score(features, cluster_labels)
-        
+
         print(f"✓ Clustering complete")
         print(f"  Silhouette score: {sil_score:.4f}")
-        
+
         # Show cluster distribution
         unique, counts = np.unique(cluster_labels, return_counts=True)
         print(f"\n  Cluster distribution:")
         for cluster_id, count in zip(unique, counts):
             print(f"    Cluster {cluster_id}: {count} tracks")
-        
+
         return cluster_labels, sil_score, kmeans
     
     def calculate_similarities(self, features: np.ndarray, track_ids: list) -> list:
@@ -185,34 +227,43 @@ class AudioFeatureProcessor:
         
         return edges
     
-    def process(self, input_file: str, output_dir: str = 'data/processed'):
+    def process(self, input_file: str, output_dir: str = 'data/processed',
+                optimize_clusters: bool = False, k_range: range = range(2, 21)):
         """
         Complete ML processing pipeline
-        
+
         Args:
             input_file: Path to input JSON file
             output_dir: Directory to save processed files
+            optimize_clusters: If True, find optimal number of clusters
+            k_range: Range of k values to test for optimization
         """
         print("\n" + "="*60)
         print("Audio Features ML Processing Pipeline")
         print("="*60)
-        
+
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Load data
         df = self.load_data(input_file)
-        
+
         # Normalize features
         normalized_features, scaler = self.normalize_features(df)
-        
+
         # Perform UMAP
         embeddings = self.perform_umap(normalized_features)
-        
+
         # Add embeddings to dataframe
         df['embedding_x'] = embeddings[:, 0]
         df['embedding_y'] = embeddings[:, 1]
-        
+
+        # Find optimal clusters if requested
+        optimization_results = None
+        if optimize_clusters:
+            optimization_results = self.find_optimal_clusters(normalized_features, k_range)
+            self.n_clusters = optimization_results['optimal_k']
+
         # Perform clustering
         cluster_labels, sil_score, kmeans = self.perform_clustering(normalized_features)
         
@@ -259,6 +310,18 @@ class AudioFeatureProcessor:
             'similarity_threshold': self.similarity_threshold,
             'top_n_similar': self.top_n_similar
         }
+
+        # Add optimization results if available
+        if optimization_results:
+            stats['optimization'] = {
+                'optimized': True,
+                'optimal_k': optimization_results['optimal_k'],
+                'optimal_score': optimization_results['optimal_score'],
+                'tested_k_values': optimization_results['all_k_values'],
+                'all_silhouette_scores': optimization_results['all_scores']
+            }
+        else:
+            stats['optimization'] = {'optimized': False}
         
         stats_output = os.path.join(output_dir, 'processing_stats.json')
         with open(stats_output, 'w') as f:
@@ -282,18 +345,22 @@ class AudioFeatureProcessor:
 def main():
     """Main execution"""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Process audio features with ML')
     parser.add_argument('input', help='Input JSON file')
     parser.add_argument('--output', default='data/processed', help='Output directory')
-    parser.add_argument('--clusters', type=int, default=10, help='Number of clusters')
+    parser.add_argument('--clusters', type=int, default=10, help='Number of clusters (ignored if --optimize-clusters is used)')
     parser.add_argument('--neighbors', type=int, default=15, help='UMAP n_neighbors')
     parser.add_argument('--min-dist', type=float, default=0.1, help='UMAP min_dist')
     parser.add_argument('--threshold', type=float, default=0.7, help='Similarity threshold')
     parser.add_argument('--top-n', type=int, default=15, help='Top N similar tracks')
-    
+    parser.add_argument('--optimize-clusters', action='store_true',
+                        help='Automatically find optimal number of clusters using silhouette score')
+    parser.add_argument('--k-min', type=int, default=2, help='Minimum k to test when optimizing (default: 2)')
+    parser.add_argument('--k-max', type=int, default=21, help='Maximum k to test when optimizing (default: 21)')
+
     args = parser.parse_args()
-    
+
     processor = AudioFeatureProcessor(
         n_clusters=args.clusters,
         n_neighbors=args.neighbors,
@@ -301,8 +368,13 @@ def main():
         similarity_threshold=args.threshold,
         top_n_similar=args.top_n
     )
-    
-    processor.process(args.input, args.output)
+
+    processor.process(
+        args.input,
+        args.output,
+        optimize_clusters=args.optimize_clusters,
+        k_range=range(args.k_min, args.k_max)
+    )
 
 
 if __name__ == '__main__':
