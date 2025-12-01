@@ -33,6 +33,14 @@ def get_mongo_client():
 def get_neo4j_client():
     return Neo4jClient()
 
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_cluster_ids(_mongo_client):
+    """Get all distinct cluster IDs from the database."""
+    collection = _mongo_client.get_collection()
+    cluster_ids = collection.distinct("cluster_id")
+    # Sort cluster IDs numerically
+    return sorted([int(c) for c in cluster_ids if c is not None])
+
 mongo_client = get_mongo_client()
 neo4j_client = get_neo4j_client()
 
@@ -49,6 +57,9 @@ if not (mongo_status and neo4j_status):
     st.stop()
 
 st.success("SUCCESS: Connected to MongoDB and Neo4j")
+
+# Get available cluster IDs from database
+cluster_ids = get_cluster_ids(mongo_client)
 
 # Create tabs for different query types
 tab1, tab2 = st.tabs([
@@ -72,7 +83,7 @@ with tab1:
     # Cluster selection
     cluster_id = st.selectbox(
         "Select Cluster",
-        list(range(10)),
+        cluster_ids,
         help="Choose a cluster to explore its tracks"
     )
 

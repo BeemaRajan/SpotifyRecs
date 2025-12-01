@@ -32,7 +32,6 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
       - neo4j_import:/var/lib/neo4j/import
-      - ./neo4j_scripts:/scripts
     healthcheck:
       test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "password123", "RETURN 1"]
       interval: 10s
