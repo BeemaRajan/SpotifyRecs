@@ -180,7 +180,7 @@ Beyond audio features, each track includes:
 
 **Option B: Kaggle Dataset** ([kaggle_conversion.py](data_collection/kaggle_conversion.py))
 - Converts pre-collected CSV to JSON format
-- Dataset: 1,556 tracks with all audio features
+- Dataset: ~6,000 tracks with all audio features
 - No API credentials required
 - Outputs: `data/raw/tracks.json`
 
